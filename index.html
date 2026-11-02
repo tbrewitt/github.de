@@ -176,18 +176,22 @@ try{
  function updateScroll(allowAutomatic=true){
   const previous=desired;
   desired=clamp(1-scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));
-  if(allowAutomatic&&!autoFlight&&desired<.995&&desired>previous+.000001){
-   autoFlight={from:desired,start:performance.now()};
+  if(allowAutomatic&&!autoFlight){
+   if(desired<.995&&desired>previous+.000001){
+    autoFlight={from:desired,to:1,start:performance.now()};
+   }else if(desired>.005&&desired<previous-.000001){
+    autoFlight={from:desired,to:0,start:performance.now()};
+   }
   }
  }
- function cancelFlight(){autoFlight=null;}
+ function steerFlight(destination){if(autoFlight&&autoFlight.to!==destination)autoFlight=null;}
  function render(now){
   frame=0;if(document.hidden||lost)return;
   if(!startTime)startTime=now;
   if(autoFlight){
    const t=reduced.matches?1:clamp((now-autoFlight.start)/620);
    const ease=t*t*t*(t*(t*6-15)+10);
-   desired=autoFlight.from+(1-autoFlight.from)*ease;
+   desired=autoFlight.from+(autoFlight.to-autoFlight.from)*ease;
    scrollTo(0,(1-desired)*Math.max(0,document.documentElement.scrollHeight-innerHeight));
    if(t>=1)autoFlight=null;
   }
@@ -230,15 +234,16 @@ try{
  }
  function wake(){if(!frame&&!document.hidden&&!lost){last=0;frame=requestAnimationFrame(render);}}
  addEventListener('scroll',()=>{updateScroll();wake();},{passive:true});
- addEventListener('wheel',event=>{if(event.deltaY>0)cancelFlight();},{passive:true});
+ addEventListener('wheel',event=>{if(event.deltaY!==0)steerFlight(event.deltaY<0?1:0);},{passive:true});
  addEventListener('touchstart',event=>{touchY=event.touches[0]?.clientY??null;},{passive:true});
  addEventListener('touchmove',event=>{
   const y=event.touches[0]?.clientY;
-  if(y!==undefined&&touchY!==null&&y<touchY)cancelFlight();
+  if(y!==undefined&&touchY!==null&&y!==touchY)steerFlight(y>touchY?1:0);
   touchY=y??null;
  },{passive:true});
  addEventListener('keydown',event=>{
-  if(['ArrowDown','PageDown','End'].includes(event.key)||(event.key===' '&&!event.shiftKey))cancelFlight();
+  if(['ArrowDown','PageDown','End'].includes(event.key)||(event.key===' '&&!event.shiftKey))steerFlight(0);
+  if(['ArrowUp','PageUp','Home'].includes(event.key)||(event.key===' '&&event.shiftKey))steerFlight(1);
  });
  addEventListener('resize',()=>{resize();wake();},{passive:true});
  document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnimationFrame(frame);frame=0;last=0;}else wake();});
