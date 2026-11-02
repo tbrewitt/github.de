@@ -1,5 +1,120 @@
 <!doctype html>
 <html lang="de">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Die persönliche Website von titanitus. Mehr dazu bald."><title>titanitus</title>
-<style>:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101215;color:#f4f5f7}*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:2rem}main{width:min(100%,52rem)}p{color:#b7bcc6;font-size:1.15rem;line-height:1.7}small{color:#85dbba;letter-spacing:.14em}h1{font-size:clamp(3rem,12vw,7rem);letter-spacing:-.065em;margin:1.1rem 0}a{color:#a5ecd1;text-underline-offset:.3em}a:focus-visible{outline:2px solid #a5ecd1;outline-offset:6px}</style></head>
-<body><main><small>titanitus.de</small><h1>titanitus<span style="color:#85dbba">.</span></h1><p>Hier entsteht meine persönliche Website.<br>Mehr dazu bald.</p><p><a href="https://github.com/tbrewitt">Zu meinem GitHub-Profil &rarr;</a></p></main></body></html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#010207">
+<meta name="description" content="Erde und Weltraum. Eine vollständig mit Code erzeugte Szene.">
+<title>titanitus — Orbit</title>
+<style>
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#010207}canvas{display:block;width:100%;height:100%;position:fixed;inset:0}#fallback{display:none;color:#a4afbf;font:14px/1.6 system-ui;position:fixed;inset:0;place-content:center;padding:32px}html.unavailable #fallback{display:grid}
+</style>
+</head>
+<body>
+<canvas id="space" role="img" aria-label="Blick aus dem Weltraum auf die gekrümmte Erde mit Ozeanen, Kontinenten, Wolken und einer dünnen blauen Atmosphäre vor einem natürlichen Sternenhimmel."></canvas>
+<div id="fallback">Diese Weltraumszene benötigt WebGL. Bitte aktiviere die Hardwarebeschleunigung deines Browsers.</div>
+<script id="vertex" type="x-shader/x-vertex">
+attribute vec2 position;
+void main(){gl_Position=vec4(position,0.,1.);}
+</script>
+<script id="fragment" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2 resolution;
+uniform sampler2D geography;
+const float PI=3.14159265359;
+float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}
+float noise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);vec2 b=i.xy+vec2(37.,113.)*i.z;return mix(mix(mix(hash(b),hash(b+vec2(1,0)),f.x),mix(hash(b+vec2(0,1)),hash(b+vec2(1)),f.x),f.y),mix(mix(hash(b+vec2(37,113)),hash(b+vec2(38,113)),f.x),mix(hash(b+vec2(37,114)),hash(b+vec2(38,114)),f.x),f.y),f.z);}
+float fbm(vec3 p){float a=.5,v=0.;for(int i=0;i<6;i++){v+=a*noise(p);p=p*2.03+vec3(17.1,9.2,13.7);a*=.5;}return v;}
+vec3 stars(vec2 uv,float scale,float seed){vec2 grid=uv*scale,cell=floor(grid);vec2 location=vec2(hash(cell+seed),hash(cell+seed+71.));vec2 d=(fract(grid)-location);float h=hash(cell+seed+19.);float bright=pow(h,12.);float point=exp(-dot(d,d)*14000./(resolution.y/1100.));vec3 tint=mix(vec3(.65,.78,1.),vec3(1.,.86,.69),hash(cell+seed+53.));return tint*point*bright*1.7;}
+vec2 intersectSphere(vec3 ro,vec3 rd,vec3 c,float r){vec3 oc=ro-c;float b=dot(oc,rd),h=b*b-dot(oc,oc)+r*r;if(h<0.)return vec2(-1.);h=sqrt(h);return vec2(-b-h,-b+h);}
+float landAt(vec3 n){float lon=atan(n.x,n.z)+.17;vec2 uv=vec2(fract(lon/(2.*PI)+.5),asin(clamp(n.y,-1.,1.))/PI+.5);vec2 warp=vec2(fbm(n*57.),fbm(n*63.+30.))-.5;return texture2D(geography,uv+warp*.004).r;}
+float clouds(vec3 n){vec3 p=n*5.;float curl=fbm(p*1.9);p+=vec3(curl,-curl,curl*.5)*1.25;float bands=fbm(p*3.2+vec3(5,0,3));float detail=fbm(n*125.);return smoothstep(.47,.69,bands*.82+detail*.18);}
+void main(){
+ vec2 uv=gl_FragCoord.xy/resolution;vec2 p=(gl_FragCoord.xy-.5*resolution)/resolution.y;
+ vec3 rd=normalize(vec3(p,-1.35));vec3 ro=vec3(0.);vec3 center=vec3(0.,-3.,-6.3);float radius=3.3;
+ vec3 sun=normalize(vec3(-.72,.62,.72));
+ vec3 col=vec3(.00035,.0006,.0015);
+ col+=stars(p,57.,3.)+stars(p,103.,47.)*.58+stars(p,171.,129.)*.29;
+ // The atmosphere is a thin physical shell: density decays with altitude.
+ vec2 air=intersectSphere(ro,rd,center,radius+.055);
+ vec2 ground=intersectSphere(ro,rd,center,radius);
+ if(ground.x>0.){
+  vec3 hit=rd*ground.x,n=normalize(hit-center);float mu=dot(n,sun);float daylight=smoothstep(-.10,.22,mu);
+  float land=landAt(n);float continent=smoothstep(.29,.71,land);
+  float latitude=asin(n.y);float terrain=fbm(n*39.);float fine=fbm(n*290.);
+  vec3 ocean=mix(vec3(.003,.012,.035),vec3(.005,.035,.073),max(mu,0.));
+  float coast=4.*land*(1.-land);ocean+=vec3(.006,.035,.034)*coast;
+  float longitude=atan(n.x,n.z)+.17;float sahara=smoothstep(-.40,-.18,longitude)*(1.-smoothstep(.70,1.05,longitude));float desert=exp(-pow((latitude-.40)/.22,2.))*mix(.4,1.,sahara);
+  vec3 soil=mix(vec3(.048,.084,.047),vec3(.21,.165,.095),desert);
+  soil*=.70+terrain*.65;soil+=vec3(.028,.022,.012)*(fine-.5);
+  float mountain=pow(max(0.,1.-abs(terrain-.51)*5.),5.);
+  soil=mix(soil,vec3(.21,.205,.183),mountain*.22);
+  float snow=smoothstep(.98,1.30,latitude+(terrain-.5)*.35);
+  soil=mix(soil,vec3(.66,.73,.77),snow);
+  vec3 surface=mix(ocean,soil,continent);
+  // Restrained sunlight, a little reflected blue skylight, and ocean glint.
+  surface*=max(mu,0.)*1.45+.012;
+  vec3 halfVector=normalize(sun-rd);float spec=pow(max(dot(n,halfVector),0.),110.);
+  surface+=vec3(.60,.68,.72)*spec*.30*(1.-continent)*daylight;
+  vec3 cloudN=normalize(rd*intersectSphere(ro,rd,center,radius+.022).x-center);
+  float cloud=clouds(cloudN);float shadow=clouds(normalize(n+sun*.009));
+  surface*=1.-shadow*.24*daylight;
+  float cloudLight=max(mu,0.)*1.2+.025;
+  surface=mix(surface,vec3(.75,.80,.86)*cloudLight,cloud*.94);
+  float limb=pow(1.-max(dot(n,-rd),0.),3.4);
+  surface=mix(surface,vec3(.065,.24,.48)*(.2+max(mu,0.)*.8),limb*.40*daylight);
+  col=surface;
+ }
+ if(air.x>0.){
+  float end=ground.x>0.?ground.x:air.y;float stepSize=(end-air.x)/12.;vec3 optical=vec3(0.);float depth=0.;
+  for(int i=0;i<12;i++){
+   vec3 q=rd*(air.x+(float(i)+.5)*stepSize)-center;float height=length(q)-radius;
+   float density=exp(-max(height,0.)/.011);float lit=smoothstep(-.12,.20,dot(normalize(q),sun));
+   optical+=vec3(.14,.43,1.)*density*stepSize*lit;depth+=density*stepSize;
+  }
+  float phase=.72+.28*pow(dot(rd,sun),2.);
+  col=col*exp(-depth*vec3(1.1,1.9,3.0))+optical*phase*2.65;
+ }
+ // Filmic exposure with a restrained display transfer, no bloom or lens flares.
+ col=vec3(1.)-exp(-col*1.6);col=pow(max(col,vec3(0.)),vec3(1./2.2));
+ float grain=(hash(gl_FragCoord.xy)-.5)/550.;col+=grain;
+ gl_FragColor=vec4(col,1.);
+}
+</script>
+<script>
+(()=>{'use strict';
+const canvas=document.getElementById('space');
+const gl=canvas.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:true});
+if(!gl){document.documentElement.classList.add('unavailable');return;}
+function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
+try{
+ const program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,document.getElementById('vertex').textContent));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,document.getElementById('fragment').textContent));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
+ const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);const position=gl.getAttribLocation(program,'position');gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
+ // Geographic silhouettes are defined as longitude/latitude contours, not images.
+ const continents=[
+ [[-168,72],[-144,70],[-132,60],[-124,53],[-128,49],[-123,40],[-117,32],[-111,30],[-105,23],[-97,16],[-90,18],[-86,21],[-82,23],[-81,26],[-80,32],[-75,36],[-67,45],[-59,48],[-55,53],[-64,60],[-77,62],[-82,68],[-96,73],[-113,72],[-131,70],[-153,72]],
+ [[-97,20],[-90,18],[-87,14],[-83,10],[-79,8],[-76,8],[-80,10],[-84,16],[-88,21]],
+ [[-81,12],[-71,12],[-62,10],[-52,4],[-35,-5],[-37,-14],[-42,-23],[-49,-29],[-53,-34],[-59,-39],[-66,-55],[-72,-51],[-75,-40],[-73,-28],[-70,-18],[-79,-7],[-81,0]],
+ [[-17,36],[-6,36],[1,37],[10,37],[19,32],[25,32],[33,30],[35,23],[43,12],[51,12],[48,3],[42,-1],[40,-11],[35,-21],[32,-28],[26,-34],[18,-35],[12,-25],[11,-16],[8,-5],[2,5],[-7,5],[-16,13],[-17,22]],
+ [[-10,36],[-9,43],[-2,44],[-5,49],[2,51],[8,54],[8,58],[5,59],[5,63],[15,70],[26,71],[33,67],[40,66],[50,70],[70,73],[90,77],[110,76],[130,71],[150,70],[177,65],[179,54],[163,59],[157,51],[143,45],[137,36],[129,35],[122,25],[120,20],[109,18],[107,10],[102,2],[98,7],[99,17],[93,21],[88,22],[81,7],[76,9],[71,21],[66,25],[58,25],[54,17],[46,13],[42,17],[35,29],[30,32],[26,40],[22,41],[24,38],[23,35],[19,40],[16,41],[16,38],[12,43],[8,44],[4,43],[0,40]],
+ [[-73,60],[-48,60],[-42,65],[-22,72],[-19,79],[-32,83],[-52,82],[-62,76]],
+ [[-11,51],[-10,55],[-7,58],[-5,59],[-3,58],[-2,54],[1,52],[-1,50],[-5,50],[-6,54],[-8,51]],
+ [[-25,63],[-23,67],[-15,67],[-13,65],[-18,63]],
+ [[113,-22],[114,-31],[120,-34],[130,-32],[137,-35],[145,-39],[151,-33],[154,-25],[148,-18],[143,-11],[136,-12],[130,-11],[124,-15]],
+ [[47,-13],[50,-16],[49,-24],[45,-26],[43,-23],[44,-17]],
+ [[130,31],[135,35],[140,40],[142,45],[145,44],[143,39],[138,35],[134,33]],
+ [[95,5],[101,2],[106,-6],[104,-7],[98,-2]],[[109,7],[118,6],[119,0],[114,-4],[109,-1]],[[130,-3],[141,-3],[151,-6],[147,-10],[137,-8]],
+ [[166,-34],[179,-38],[177,-43],[168,-47],[166,-45],[172,-40]],
+ [[-180,-72],[-140,-75],[-100,-72],[-60,-66],[-55,-74],[-10,-70],[40,-69],[80,-67],[120,-66],[160,-71],[180,-72],[180,-90],[-180,-90]]
+ ];
+ const map=document.createElement('canvas');map.width=2048;map.height=1024;const ctx=map.getContext('2d');ctx.fillStyle='black';ctx.fillRect(0,0,map.width,map.height);ctx.fillStyle='white';for(const shape of continents){const points=shape.map(([lon,lat])=>[(lon+180)/360*map.width,(90-lat)/180*map.height]);const last=points[points.length-1];ctx.beginPath();ctx.moveTo((last[0]+points[0][0])/2,(last[1]+points[0][1])/2);points.forEach((point,i)=>{const next=points[(i+1)%points.length];ctx.quadraticCurveTo(point[0],point[1],(point[0]+next[0])/2,(point[1]+next[1])/2);});ctx.closePath();ctx.fill();}
+ const texture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,map);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.uniform1i(gl.getUniformLocation(program,'geography'),0);
+ const resolution=gl.getUniformLocation(program,'resolution');
+ function render(){const ratio=Math.min(devicePixelRatio||1,1.75);canvas.width=Math.round(innerWidth*ratio);canvas.height=Math.round(innerHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height);gl.uniform2f(resolution,canvas.width,canvas.height);gl.drawArrays(gl.TRIANGLES,0,6);}
+ let pending;addEventListener('resize',()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(render);});canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();});canvas.addEventListener('webglcontextrestored',()=>location.reload());render();
+}catch(error){console.error('Orbit rendering failed:',error);document.documentElement.classList.add('unavailable');}
+})();
+</script>
+</body>
+</html>
+
