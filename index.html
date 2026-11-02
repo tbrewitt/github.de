@@ -7,11 +7,21 @@
 <meta name="description" content="Erde und Weltraum. Eine vollständig mit Code erzeugte Szene.">
 <title>titanitus — Orbit</title>
 <style>
-*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#010207}canvas{display:block;width:100%;height:100%;position:fixed;inset:0}#fallback{display:none;color:#a4afbf;font:14px/1.6 system-ui;position:fixed;inset:0;place-content:center;padding:32px}html.unavailable #fallback{display:grid}
+*{box-sizing:border-box}html{width:100%;min-height:100%;margin:0;background:#010207;scrollbar-width:none}html::-webkit-scrollbar{display:none}body{width:100%;height:500svh;margin:0;background:#010207;overscroll-behavior-y:none}canvas{display:block;width:100%;height:100%;position:fixed;inset:0}#fallback{display:none;color:#a4afbf;font:14px/1.6 system-ui;position:fixed;inset:0;place-content:center;padding:32px}html.unavailable #fallback{display:grid}
+
+#location{position:fixed;left:0;top:0;width:0;height:0;z-index:2;pointer-events:none;opacity:0;will-change:transform,opacity}
+.beacon{position:absolute;width:9px;height:9px;left:-4.5px;top:-4.5px;border-radius:50%;background:#ff453f;box-shadow:0 0 0 3px #ff453f20,0 0 15px #ff453f35}
+.ring{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border:1px solid #ff554d;border-radius:50%;background:#ff453f12;animation:ping 3s cubic-bezier(.15,.35,.35,1) infinite;will-change:transform,opacity}
+.ring.second{animation-delay:-1.5s}
+.place{position:absolute;top:22px;left:0;transform:translateX(-50%);text-align:center;white-space:nowrap;font:500 12px/1.5 system-ui,sans-serif;letter-spacing:.1em;color:#f4f5f7;text-shadow:0 1px 10px #0009}
+.place span{display:block;font-size:9px;font-weight:400;letter-spacing:.16em;color:#e3e8efad;margin-top:3px}
+@keyframes ping{0%{transform:scale(.7);opacity:0}12%{opacity:.5}100%{transform:scale(5);opacity:0}}
+@media(prefers-reduced-motion:reduce){.ring{animation:none;opacity:.2;transform:scale(2)}}
 </style>
 </head>
 <body>
 <canvas id="space" role="img" aria-label="Blick aus dem Weltraum auf die gekrümmte Erde mit Ozeanen, Kontinenten, Wolken und einer dünnen blauen Atmosphäre vor einem natürlichen Sternenhimmel."></canvas>
+<div id="location" role="img" aria-label="Standort Bielefeld, Deutschland"><i class="ring"></i><i class="ring second"></i><i class="beacon"></i><div class="place">Bielefeld<span>DEUTSCHLAND</span></div></div>
 <div id="fallback">Diese Weltraumszene benötigt WebGL. Bitte aktiviere die Hardwarebeschleunigung deines Browsers.</div>
 <script id="vertex" type="x-shader/x-vertex">
 attribute vec2 position;
@@ -21,6 +31,9 @@ void main(){gl_Position=vec4(position,0.,1.);}
 precision highp float;
 uniform vec2 resolution;
 uniform sampler2D geography;
+uniform vec3 cameraPosition;
+uniform mat3 cameraBasis;
+uniform float elapsed;
 const float PI=3.14159265359;
 float hash(vec2 p){vec3 q=fract(vec3(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}
 float noise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);vec2 b=i.xy+vec2(37.,113.)*i.z;return mix(mix(mix(hash(b),hash(b+vec2(1,0)),f.x),mix(hash(b+vec2(0,1)),hash(b+vec2(1)),f.x),f.y),mix(mix(hash(b+vec2(37,113)),hash(b+vec2(38,113)),f.x),mix(hash(b+vec2(37,114)),hash(b+vec2(38,114)),f.x),f.y),f.z);}
@@ -31,15 +44,18 @@ float landAt(vec3 n){float lon=atan(n.x,n.z)+.17;vec2 uv=vec2(fract(lon/(2.*PI)+
 float clouds(vec3 n){vec3 p=n*5.;float curl=fbm(p*1.9);p+=vec3(curl,-curl,curl*.5)*1.25;float bands=fbm(p*3.2+vec3(5,0,3));float detail=fbm(n*125.);return smoothstep(.47,.69,bands*.82+detail*.18);}
 void main(){
  vec2 uv=gl_FragCoord.xy/resolution;vec2 p=(gl_FragCoord.xy-.5*resolution)/resolution.y;
- vec3 rd=normalize(vec3(p,-1.35));vec3 ro=vec3(0.);vec3 center=vec3(0.,-3.,-6.3);float radius=3.3;
+ vec3 rd=normalize(cameraBasis*vec3(p,1.35));vec3 ro=cameraPosition;vec3 center=vec3(0.,-3.,-6.3);float radius=3.3;
  vec3 sun=normalize(vec3(-.72,.62,.72));
  vec3 col=vec3(.00035,.0006,.0015);
- col+=stars(p,57.,3.)+stars(p,103.,47.)*.58+stars(p,171.,129.)*.29;
+ vec2 sky=rd.xy/max(.12,-rd.z)*1.35;
+ vec2 drift=vec2(elapsed*.00014,elapsed*.000045);
+ vec2 parallax=ro.xy*.0009;
+ col+=stars(sky+drift+parallax,57.,3.)+stars(sky+drift*.52+parallax*.48,103.,47.)*.58+stars(sky+drift*.23+parallax*.19,171.,129.)*.29;
  // The atmosphere is a thin physical shell: density decays with altitude.
  vec2 air=intersectSphere(ro,rd,center,radius+.055);
  vec2 ground=intersectSphere(ro,rd,center,radius);
  if(ground.x>0.){
-  vec3 hit=rd*ground.x,n=normalize(hit-center);float mu=dot(n,sun);float daylight=smoothstep(-.10,.22,mu);
+  vec3 hit=ro+rd*ground.x,n=normalize(hit-center);float mu=dot(n,sun);float daylight=smoothstep(-.10,.22,mu);
   float land=landAt(n);float continent=smoothstep(.29,.71,land);
   float latitude=asin(n.y);float terrain=fbm(n*39.);float fine=fbm(n*290.);
   vec3 ocean=mix(vec3(.003,.012,.035),vec3(.005,.035,.073),max(mu,0.));
@@ -56,7 +72,7 @@ void main(){
   surface*=max(mu,0.)*1.45+.012;
   vec3 halfVector=normalize(sun-rd);float spec=pow(max(dot(n,halfVector),0.),110.);
   surface+=vec3(.60,.68,.72)*spec*.30*(1.-continent)*daylight;
-  vec3 cloudN=normalize(rd*intersectSphere(ro,rd,center,radius+.022).x-center);
+  vec3 cloudN=normalize(ro+rd*intersectSphere(ro,rd,center,radius+.022).x-center);
   float cloud=clouds(cloudN);float shadow=clouds(normalize(n+sun*.009));
   surface*=1.-shadow*.24*daylight;
   float cloudLight=max(mu,0.)*1.2+.025;
@@ -68,7 +84,7 @@ void main(){
  if(air.x>0.){
   float end=ground.x>0.?ground.x:air.y;float stepSize=(end-air.x)/12.;vec3 optical=vec3(0.);float depth=0.;
   for(int i=0;i<12;i++){
-   vec3 q=rd*(air.x+(float(i)+.5)*stepSize)-center;float height=length(q)-radius;
+   vec3 q=ro+rd*(air.x+(float(i)+.5)*stepSize)-center;float height=length(q)-radius;
    float density=exp(-max(height,0.)/.011);float lit=smoothstep(-.12,.20,dot(normalize(q),sun));
    optical+=vec3(.14,.43,1.)*density*stepSize*lit;depth+=density*stepSize;
   }
@@ -110,8 +126,71 @@ try{
  const map=document.createElement('canvas');map.width=2048;map.height=1024;const ctx=map.getContext('2d');ctx.fillStyle='black';ctx.fillRect(0,0,map.width,map.height);ctx.fillStyle='white';for(const shape of continents){const points=shape.map(([lon,lat])=>[(lon+180)/360*map.width,(90-lat)/180*map.height]);const last=points[points.length-1];ctx.beginPath();ctx.moveTo((last[0]+points[0][0])/2,(last[1]+points[0][1])/2);points.forEach((point,i)=>{const next=points[(i+1)%points.length];ctx.quadraticCurveTo(point[0],point[1],(point[0]+next[0])/2,(point[1]+next[1])/2);});ctx.closePath();ctx.fill();}
  const texture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,map);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.uniform1i(gl.getUniformLocation(program,'geography'),0);
  const resolution=gl.getUniformLocation(program,'resolution');
- function render(){const ratio=Math.min(devicePixelRatio||1,1.75);canvas.width=Math.round(innerWidth*ratio);canvas.height=Math.round(innerHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height);gl.uniform2f(resolution,canvas.width,canvas.height);gl.drawArrays(gl.TRIANGLES,0,6);}
- let pending;addEventListener('resize',()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(render);});canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();});canvas.addEventListener('webglcontextrestored',()=>location.reload());render();
+ const cameraPosition=gl.getUniformLocation(program,'cameraPosition');
+ const cameraBasis=gl.getUniformLocation(program,'cameraBasis');
+ const elapsed=gl.getUniformLocation(program,'elapsed');
+ const marker=document.getElementById('location'),label=marker.querySelector('.place');
+ const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+ const clamp=x=>Math.max(0,Math.min(1,x));
+ const smooth=(a,b,x)=>{x=clamp((x-a)/(b-a));return x*x*(3-2*x);};
+ const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+ const dot=(a,b)=>a.reduce((v,n,i)=>v+n*b[i],0);
+ const norm=a=>{const l=Math.hypot(...a);return a.map(v=>v/l);};
+ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+ // Bielefeld city coordinates, geographic degrees (GeoNames 2949186).
+ const lat=52.0333333*Math.PI/180,lon=8.5333333*Math.PI/180-.17;
+ const normal=[Math.sin(lon)*Math.cos(lat),Math.sin(lat),Math.cos(lon)*Math.cos(lat)];
+ const target=normal.map((v,i)=>v*3.3+[0,-3,-6.3][i]);
+ const initialDistance=Math.hypot(...target),initialDirection=norm(target.map(v=>-v));
+ const basis=new Float32Array(9);
+ let progress=0,desired=0,last=0,frame=0,startTime=0,lost=false;
+ let width=0,height=0,ratio=0;
+ function resize(){
+  width=innerWidth;height=innerHeight;ratio=Math.min(devicePixelRatio||1,1.5);
+  canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
+  gl.viewport(0,0,canvas.width,canvas.height);gl.uniform2f(resolution,canvas.width,canvas.height);
+  updateScroll();
+ }
+ function updateScroll(){desired=clamp(scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));}
+ function render(now){
+  frame=0;if(document.hidden||lost)return;
+  if(!startTime)startTime=now;
+  const dt=Math.min((now-(last||now))/1000,.05);last=now;
+  // Frame-rate-independent exponential damping: scrolling and reversing share one path.
+  progress+= (desired-progress)*(reduced.matches?1:1-Math.exp(-dt*7.5));
+  if(Math.abs(progress-desired)<.00001)progress=desired;
+  const e=progress*progress*(3-2*progress);
+  const distance=Math.exp(Math.log(initialDistance)+(Math.log(.55)-Math.log(initialDistance))*e);
+  const direction=norm(mix(initialDirection,normal,smooth(0,1,e)));
+  const ro=target.map((v,i)=>v+direction[i]*distance);
+  // Preserve the original camera exactly at scroll zero, then gently acquire Bielefeld.
+  const look=norm(target.map((v,i)=>v-ro[i]));
+  const forward=norm(mix([0,0,-1],look,smooth(0,.52,e)));
+  const right=norm(cross(forward,[0,1,0])),up=cross(right,forward);
+  basis.set([...right,...up,...forward]);
+  gl.uniform3fv(cameraPosition,ro);gl.uniformMatrix3fv(cameraBasis,false,basis);
+  gl.uniform1f(elapsed,reduced.matches?0:(now-startTime)/1000);
+  gl.drawArrays(gl.TRIANGLES,0,6);
+  // Project the geographic anchor with the same camera used by the shader.
+  const relative=target.map((v,i)=>v-ro[i]),z=dot(relative,forward);
+  const x=width*.5+1.35*dot(relative,right)/z*height;
+  const y=height*.5-1.35*dot(relative,up)/z*height;
+  const facing=dot(normal,norm(ro.map((v,i)=>v-target[i])))>0;
+  const visible=facing&&z>0&&x>-80&&x<width+80&&y>-80&&y<height+80;
+  marker.style.transform=`translate3d(${x}px,${y}px,0)`;
+  marker.style.opacity=visible?smooth(.025,.15,progress):0;
+  label.style.opacity=smooth(.46,.75,progress);
+  marker.setAttribute('aria-hidden',String(!visible||progress<.025));
+  if(!reduced.matches||Math.abs(progress-desired)>.00001)frame=requestAnimationFrame(render);
+ }
+ function wake(){if(!frame&&!document.hidden&&!lost){last=0;frame=requestAnimationFrame(render);}}
+ addEventListener('scroll',()=>{updateScroll();wake();},{passive:true});
+ addEventListener('resize',()=>{resize();wake();},{passive:true});
+ document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnimationFrame(frame);frame=0;last=0;}else wake();});
+ reduced.addEventListener('change',wake);
+ canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();lost=true;cancelAnimationFrame(frame);frame=0;});
+ canvas.addEventListener('webglcontextrestored',()=>location.reload());
+ resize();wake();
 }catch(error){console.error('Orbit rendering failed:',error);document.documentElement.classList.add('unavailable');}
 })();
 </script>
