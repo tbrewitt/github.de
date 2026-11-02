@@ -163,7 +163,7 @@ try{
  const basis=new Float32Array(9);
  let progress=0,velocity=0,desired=0,last=0,frame=0,startTime=0,lost=false;
  let hasArrived=false,arrivalTime=-1;
- let autoFlight=null,autoArmed=true,touchY=null;
+ let autoFlight=null,touchY=null;
  let width=0,height=0,ratio=0;
  function resize(){
   width=innerWidth;height=innerHeight;ratio=Math.min(devicePixelRatio||1,1.5);
@@ -171,17 +171,16 @@ try{
   gl.viewport(0,0,canvas.width,canvas.height);gl.uniform2f(resolution,canvas.width,canvas.height);
   // Start at the bottom so upward native scrolling flies toward Earth.
   scrollTo(0,(1-desired)*Math.max(0,document.documentElement.scrollHeight-innerHeight));
-  updateScroll();
+  updateScroll(false);
  }
- function updateScroll(){
+ function updateScroll(allowAutomatic=true){
   const previous=desired;
   desired=clamp(1-scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));
-  if(desired<.025)autoArmed=true;
-  if(autoArmed&&!autoFlight&&desired>=.08&&desired<.995&&desired>previous){
-   autoArmed=false;autoFlight={from:desired,start:performance.now()};
+  if(allowAutomatic&&!autoFlight&&desired<.995&&desired>previous+.000001){
+   autoFlight={from:desired,start:performance.now()};
   }
  }
- function cancelFlight(){if(autoFlight){autoFlight=null;autoArmed=false;}}
+ function cancelFlight(){autoFlight=null;}
  function render(now){
   frame=0;if(document.hidden||lost)return;
   if(!startTime)startTime=now;
