@@ -163,6 +163,7 @@ try{
  const basis=new Float32Array(9);
  let progress=0,velocity=0,desired=0,last=0,frame=0,startTime=0,lost=false;
  let hasArrived=false,arrivalTime=-1;
+ let autoFlight=null,autoArmed=true,touchY=null;
  let width=0,height=0,ratio=0;
  function resize(){
   width=innerWidth;height=innerHeight;ratio=Math.min(devicePixelRatio||1,1.5);
@@ -172,10 +173,25 @@ try{
   scrollTo(0,(1-desired)*Math.max(0,document.documentElement.scrollHeight-innerHeight));
   updateScroll();
  }
- function updateScroll(){desired=clamp(1-scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));}
+ function updateScroll(){
+  const previous=desired;
+  desired=clamp(1-scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));
+  if(desired<.30)autoArmed=true;
+  if(autoArmed&&!autoFlight&&desired>=.45&&desired<.995&&desired>previous){
+   autoArmed=false;autoFlight={from:desired,start:performance.now()};
+  }
+ }
+ function cancelFlight(){if(autoFlight){autoFlight=null;autoArmed=false;}}
  function render(now){
   frame=0;if(document.hidden||lost)return;
   if(!startTime)startTime=now;
+  if(autoFlight){
+   const t=reduced.matches?1:clamp((now-autoFlight.start)/850);
+   const ease=t*t*t*(t*(t*6-15)+10);
+   desired=autoFlight.from+(1-autoFlight.from)*ease;
+   scrollTo(0,(1-desired)*Math.max(0,document.documentElement.scrollHeight-innerHeight));
+   if(t>=1)autoFlight=null;
+  }
   const dt=Math.min((now-(last||now))/1000,.05);last=now;
   // Analytic critically damped spring: fast response without overshoot or velocity jumps.
   if(reduced.matches){progress=desired;velocity=0;}else{
@@ -215,6 +231,16 @@ try{
  }
  function wake(){if(!frame&&!document.hidden&&!lost){last=0;frame=requestAnimationFrame(render);}}
  addEventListener('scroll',()=>{updateScroll();wake();},{passive:true});
+ addEventListener('wheel',event=>{if(event.deltaY>0)cancelFlight();},{passive:true});
+ addEventListener('touchstart',event=>{touchY=event.touches[0]?.clientY??null;},{passive:true});
+ addEventListener('touchmove',event=>{
+  const y=event.touches[0]?.clientY;
+  if(y!==undefined&&touchY!==null&&y<touchY)cancelFlight();
+  touchY=y??null;
+ },{passive:true});
+ addEventListener('keydown',event=>{
+  if(['ArrowDown','PageDown','End'].includes(event.key)||(event.key===' '&&!event.shiftKey))cancelFlight();
+ });
  addEventListener('resize',()=>{resize();wake();},{passive:true});
  document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnimationFrame(frame);frame=0;last=0;}else wake();});
  reduced.addEventListener('change',wake);
