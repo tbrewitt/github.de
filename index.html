@@ -176,8 +176,8 @@ try{
  function updateScroll(){
   const previous=desired;
   desired=clamp(1-scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));
-  if(desired<.30)autoArmed=true;
-  if(autoArmed&&!autoFlight&&desired>=.45&&desired<.995&&desired>previous){
+  if(desired<.12)autoArmed=true;
+  if(autoArmed&&!autoFlight&&desired>=.22&&desired<.995&&desired>previous){
    autoArmed=false;autoFlight={from:desired,start:performance.now()};
   }
  }
@@ -186,7 +186,7 @@ try{
   frame=0;if(document.hidden||lost)return;
   if(!startTime)startTime=now;
   if(autoFlight){
-   const t=reduced.matches?1:clamp((now-autoFlight.start)/850);
+   const t=reduced.matches?1:clamp((now-autoFlight.start)/620);
    const ease=t*t*t*(t*(t*6-15)+10);
    desired=autoFlight.from+(1-autoFlight.from)*ease;
    scrollTo(0,(1-desired)*Math.max(0,document.documentElement.scrollHeight-innerHeight));
