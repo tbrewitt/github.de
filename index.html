@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#010207">
 <meta name="description" content="Erde und Weltraum. Eine vollständig mit Code erzeugte Szene.">
 <title>titanitus — Orbit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box}html{width:100%;min-height:100%;margin:0;background:#010207;scrollbar-width:none}html::-webkit-scrollbar{display:none}body{width:100%;height:250svh;margin:0;background:#010207;overscroll-behavior-y:none}canvas{display:block;width:100%;height:100%;position:fixed;inset:0}#fallback{display:none;color:#a4afbf;font:14px/1.6 system-ui;position:fixed;inset:0;place-content:center;padding:32px}html.unavailable #fallback{display:grid}
 
@@ -18,7 +21,7 @@
 </style>
 </head>
 <body>
-<canvas id="space" role="img" aria-label="Blick aus dem Weltraum auf die gekrümmte Erde mit Ozeanen, Kontinenten, Wolken und einer dünnen blauen Atmosphäre vor einem natürlichen Sternenhimmel."></canvas>
+<canvas id="space" role="img" aria-label="Weißer Schriftzug TITANITUS hinter der Erde. Blick aus dem Weltraum auf die gekrümmte Erde mit Ozeanen, Kontinenten, Wolken und einer dünnen blauen Atmosphäre vor einem natürlichen Sternenhimmel."></canvas>
 <div id="location" role="img" aria-label="Standort Bielefeld, Deutschland"><i class="ring"></i><i class="ring second"></i><i class="beacon"></i></div>
 <div id="fallback">Diese Weltraumszene benötigt WebGL. Bitte aktiviere die Hardwarebeschleunigung deines Browsers.</div>
 <script id="vertex" type="x-shader/x-vertex">
@@ -29,6 +32,9 @@ void main(){gl_Position=vec4(position,0.,1.);}
 precision highp float;
 uniform vec2 resolution;
 uniform sampler2D geography;
+uniform sampler2D titleTexture;
+uniform vec4 titleRect;
+uniform float titleOpacity;
 uniform vec3 cameraPosition;
 uniform mat3 cameraBasis;
 uniform float elapsed;
@@ -51,6 +57,12 @@ void main(){
  vec2 drift=vec2(elapsed*.00014,elapsed*.000045);
  vec2 parallax=ro.xy*.0009;
  col+=stars(sky+drift+parallax,57.,3.)+stars(sky+drift*.52+parallax*.48,103.,47.)*.58+stars(sky+drift*.23+parallax*.19,171.,129.)*.29;
+ // The title belongs to the background; the Earth naturally occludes it.
+ vec2 titleUV=(uv-titleRect.xy)/titleRect.zw;
+ if(titleUV.x>=0.&&titleUV.x<=1.&&titleUV.y>=0.&&titleUV.y<=1.){
+  float ink=texture2D(titleTexture,titleUV).a*titleOpacity;
+  col=mix(col,vec3(6.),ink);
+ }
  // The atmosphere is a thin physical shell: density decays with altitude.
  vec2 air=intersectSphere(ro,rd,center,radius+.055);
  vec2 ground=intersectSphere(ro,rd,center,radius);
@@ -140,6 +152,30 @@ try{
  ];
  const map=document.createElement('canvas');map.width=2048;map.height=1024;const ctx=map.getContext('2d');ctx.fillStyle='black';ctx.fillRect(0,0,map.width,map.height);ctx.fillStyle='white';for(const shape of continents){const points=shape.map(([lon,lat])=>[(lon+180)/360*map.width,(90-lat)/180*map.height]);const last=points[points.length-1];ctx.beginPath();ctx.moveTo((last[0]+points[0][0])/2,(last[1]+points[0][1])/2);points.forEach((point,i)=>{const next=points[(i+1)%points.length];ctx.quadraticCurveTo(point[0],point[1],(point[0]+next[0])/2,(point[1]+next[1])/2);});ctx.closePath();ctx.fill();}
  const texture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,map);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.uniform1i(gl.getUniformLocation(program,'geography'),0);
+ // Rasterize live Anton lettering into a transparent GPU texture.
+ const titleCanvas=document.createElement('canvas');titleCanvas.width=2048;titleCanvas.height=512;
+ const titleContext=titleCanvas.getContext('2d'),titleTexture=gl.createTexture();
+ const titleRect=gl.getUniformLocation(program,'titleRect');
+ const titleOpacity=gl.getUniformLocation(program,'titleOpacity');
+ function uploadTitle(){
+  titleContext.clearRect(0,0,2048,512);
+  titleContext.font='400 420px Anton, Impact, sans-serif';
+  const fit=Math.min(1920/titleContext.measureText('TITANITUS').width,1);
+  titleContext.font=`400 ${420*fit}px Anton, Impact, sans-serif`;
+  const metrics=titleContext.measureText('TITANITUS');
+  titleContext.textAlign='center';titleContext.fillStyle='#ffffff';
+  titleContext.fillText('TITANITUS',1024,256+(metrics.actualBoundingBoxAscent-metrics.actualBoundingBoxDescent)/2);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,titleTexture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,titleCanvas);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE0);
+ }
+ gl.uniform1i(gl.getUniformLocation(program,'titleTexture'),1);uploadTitle();
+ document.fonts.load('400 420px Anton','TITANITUS').then(()=>{uploadTitle();wake();}).catch(()=>{});
  const resolution=gl.getUniformLocation(program,'resolution');
  const cameraPosition=gl.getUniformLocation(program,'cameraPosition');
  const cameraBasis=gl.getUniformLocation(program,'cameraBasis');
@@ -220,6 +256,9 @@ try{
   gl.uniform3fv(cameraPosition,ro);gl.uniformMatrix3fv(cameraBasis,false,basis);
   gl.uniform1f(elapsed,reduced.matches?0:(now-startTime)/1000);
   gl.uniform1f(arrivalAge,arrivalTime<0?-1:(now-arrivalTime)/1000);
+  const titleWidth=width*.91,titleHeight=titleWidth/4;
+  gl.uniform4f(titleRect,(width-titleWidth)/2/width,.50+e*.12,titleWidth/width,titleHeight/height);
+  gl.uniform1f(titleOpacity,1-smooth(.04,.32,progress));
   gl.drawArrays(gl.TRIANGLES,0,6);
   // Project the geographic anchor with the same camera used by the shader.
   const relative=target.map((v,i)=>v-ro[i]),z=dot(relative,forward);
