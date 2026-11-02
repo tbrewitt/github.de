@@ -113,6 +113,7 @@ void main(){
 </script>
 <script>
 (()=>{'use strict';
+if('scrollRestoration' in history)history.scrollRestoration='manual';
 const canvas=document.getElementById('space');
 const gl=canvas.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:true});
 if(!gl){document.documentElement.classList.add('unavailable');return;}
@@ -167,9 +168,11 @@ try{
   width=innerWidth;height=innerHeight;ratio=Math.min(devicePixelRatio||1,1.5);
   canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
   gl.viewport(0,0,canvas.width,canvas.height);gl.uniform2f(resolution,canvas.width,canvas.height);
+  // Start at the bottom so upward native scrolling flies toward Earth.
+  scrollTo(0,(1-desired)*Math.max(0,document.documentElement.scrollHeight-innerHeight));
   updateScroll();
  }
- function updateScroll(){desired=clamp(scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));}
+ function updateScroll(){desired=clamp(1-scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight));}
  function render(now){
   frame=0;if(document.hidden||lost)return;
   if(!startTime)startTime=now;
